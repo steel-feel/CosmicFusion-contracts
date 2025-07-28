@@ -1,4 +1,5 @@
 use cw_storage_plus::Item;
+use crate::error::ContractError;
 use sylvia::{contract};
 // use sha3::{Keccak256};
 use sylvia::ctx::{ExecCtx, InstantiateCtx, QueryCtx};
@@ -23,6 +24,7 @@ pub struct InstantiateMsgData {
 
 #[cfg_attr(not(feature = "library"), sylvia::entry_points(generics<Empty, Empty>))]
 #[contract]
+#[sv::error(ContractError)]
 #[sv::custom(msg = E, query = Q)]
 impl<E, Q> EscrowDest<E, Q>
 where
@@ -38,7 +40,18 @@ where
     }
 
     #[sv::msg(instantiate)]
-    fn instantiate(&self, ctx: InstantiateCtx<Q>, data: InstantiateMsgData,) -> StdResult<Response<E>> {
+    fn instantiate(&self, ctx: InstantiateCtx<Q>, data: InstantiateMsgData,) -> Result<Response<E>, ContractError> {
+        let mut ok = false;
+        for asset in ctx.info.funds {
+            if asset.denom == data.dst_immutables.token.denom && asset.amount == data.dst_immutables.token.amount {
+                ok = true;
+            }
+        }
+        if !ok {
+            return Err(ContractError::UnmatchedDenomOrAmount);
+        }
+
+
      self.rescue_delay.save(ctx.deps.storage, &data.rescue_delay)?;
      self.immutables.save(ctx.deps.storage, &data.dst_immutables)?;
         Ok(Response::new())
@@ -86,7 +99,9 @@ mod tests {
         let sender = "alice".into_addr();
         let contract = EscrowDest::<Empty, Empty>::new();
         let mut deps = mock_dependencies();
-        let ctx = InstantiateCtx::from((deps.as_mut(), mock_env(), message_info(&sender, &[])));
+        let ctx = InstantiateCtx::from((deps.as_mut(), mock_env(), message_info(&sender, &[
+            Coin::new(1000u32, "stake") 
+        ])));
         let mut hasher = Keccak256::new();
         hasher.update(b"secret");
         let hashlock = {
@@ -117,8 +132,6 @@ mod tests {
                     token : Coin::new(1000u32, "stake")   
             }
         };
-
-      
         contract.instantiate(ctx, insta_data).unwrap();
 
         // We're inspecting the raw storage here, which is fine in unit tests. In
