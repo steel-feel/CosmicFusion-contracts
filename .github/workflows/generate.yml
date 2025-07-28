@@ -6,7 +6,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      PROJECT_NAME: project-foo 
+      PROJECT_NAME: escrow_dest
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
         run: cargo wasm
       - name: Install cosmwasm-check
         working-directory: ${{ runner.temp }}/${{ env.PROJECT_NAME }}
-        run: cargo install cosmwasm-check --locked
+        run: cargo install cosmwasm-check
       - name: Check contracts
         working-directory: ${{ runner.temp }}/${{ env.PROJECT_NAME }}
         run: cosmwasm-check target/wasm32-unknown-unknown/release/*.wasm
