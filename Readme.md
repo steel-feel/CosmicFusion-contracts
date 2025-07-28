@@ -1,1 +1,1 @@
-# Cosmic Fusion Destination Escrow Contract
+# CosmicFusion-contracts
