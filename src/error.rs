@@ -9,8 +9,11 @@ pub enum ContractError {
     #[error("Denom/Amount does not match")]
     UnmatchedDenomOrAmount,
 
-    #[error("Unauthorized")]
-    Unauthorized,
+    #[error("Only Taker can call")]
+    OnlyTaker,
+
+    #[error("Invalid Secret")]
+    InvalidSecret, 
 
     #[error("Cannot set to own account")]
     CannotSetOwnAccount,
