@@ -1,6 +1,8 @@
 use sylvia::cw_std::StdError;
 use thiserror::Error;
 
+use crate::error;
+
 #[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
@@ -15,33 +17,9 @@ pub enum ContractError {
     #[error("Invalid Secret")]
     InvalidSecret, 
 
-    #[error("Cannot set to own account")]
-    CannotSetOwnAccount,
+    #[error("Destinational withdraw time has not passed")]
+    DestWithrawTimeLimit,
 
-    #[error("Invalid zero amount")]
-    InvalidZeroAmount,
-
-    #[error("Allowance is expired")]
-    Expired,
-
-    #[error("No allowance for this account")]
-    NoAllowance,
-
-    #[error("Minting cannot exceed the cap")]
-    CannotExceedCap,
-
-    #[error("Logo binary data exceeds 5KB limit")]
-    LogoTooBig,
-
-    #[error("Invalid xml preamble for SVG")]
-    InvalidXmlPreamble,
-
-    #[error("Invalid png header")]
-    InvalidPngHeader,
-
-    #[error("Invalid expiration value")]
-    InvalidExpiration,
-
-    #[error("Duplicate initial balance addresses")]
-    DuplicateInitialBalanceAddresses,
+    #[error("Destinational cancellation time has passed")]
+    DestCancelTimeLimit,
 }

@@ -7,7 +7,7 @@ use sylvia::ctx::{ExecCtx, InstantiateCtx, QueryCtx};
 use sylvia::cw_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use sylvia::cw_std::Empty;
-use sylvia::cw_std::{Response, StdResult, Uint256};
+use sylvia::cw_std::{Response, StdResult, Timestamp, Uint256};
 use sylvia::types::{CustomMsg, CustomQuery};
 
 pub struct EscrowDest<E, Q> {
@@ -80,10 +80,15 @@ where
             return Err(ContractError::OnlyTaker);
         }
 
-        // Check timelock conditions (you'll need to implement these)
+        // Check timelock conditions
         // onlyAfter(immutables.timelocks.get(TimelocksLib.Stage.DstWithdrawal))
+        if immutables.timelocks.withdrawal > ctx.env.block.time.seconds() {
+            return Err(ContractError::DestWithrawTimeLimit);
+        }
         // onlyBefore(immutables.timelocks.get(TimelocksLib.Stage.DstCancellation))
-
+        if immutables.timelocks.dest_cancellation < ctx.env.block.time.seconds() {
+            return Err(ContractError::DestCancelTimeLimit);
+        }
         // Check secret hash
         let mut hasher = Keccak256::new();
         hasher.update(msg.secret.as_bytes());
@@ -156,10 +161,10 @@ mod tests {
                 maker: Addr::unchecked("maker"),
                 taker: Addr::unchecked("taker"),
                 timelocks: Timelocks {
-                    withdrawal: Uint256::from(1 as u32),
-                    public_withdrawal: Uint256::from(2u32),
-                    dest_cancellation: Uint256::from(3u32),
-                    src_cancellation: Uint256::from(4u32),
+                    withdrawal: 1,
+                    public_withdrawal: 2,
+                    dest_cancellation: 3,
+                    src_cancellation: 4,
                 },
                 token: Coin::new(1000u32, "stake"),
             },
@@ -208,20 +213,24 @@ mod tests {
                 maker: Addr::unchecked("maker"),
                 taker: Addr::unchecked("taker"),
                 timelocks: Timelocks {
-                    withdrawal: Uint256::from(1 as u32),
-                    public_withdrawal: Uint256::from(2u32),
-                    dest_cancellation: Uint256::from(3u32),
-                    src_cancellation: Uint256::from(4u32),
+                    withdrawal: 1000,
+                    public_withdrawal: 2000,
+                    dest_cancellation: 3000,
+                    src_cancellation: 4000,
                 },
                 token: Coin::new(1000u32, "stake"),
             },
         };
         contract.instantiate(ctx, insta_data).unwrap();
 
+
+        let mut mock_env2 = mock_env();
+        mock_env2.block.time = Timestamp::from_seconds(1500);
+
         let taker = Addr::unchecked("taker");
         let exe_ctx = ExecCtx::from((
             deps.as_mut(),
-            mock_env(),
+            mock_env2,
             message_info(&taker, &[]),
         ));
 
@@ -235,6 +244,7 @@ mod tests {
         let sender = "alice".into_addr();
         let contract = EscrowDest::<Empty, Empty>::new();
         let mut deps = mock_dependencies();
+
         let ctx = InstantiateCtx::from((
             deps.as_mut(),
             mock_env(),
@@ -262,10 +272,10 @@ mod tests {
                 maker: Addr::unchecked("maker"),
                 taker: Addr::unchecked("taker"),
                 timelocks: Timelocks {
-                    withdrawal: Uint256::from(1 as u32),
-                    public_withdrawal: Uint256::from(2u32),
-                    dest_cancellation: Uint256::from(3u32),
-                    src_cancellation: Uint256::from(4u32),
+                    withdrawal: 1000,
+                    public_withdrawal: 2000,
+                    dest_cancellation: 3000,
+                    src_cancellation: 4000,
                 },
                 token: Coin::new(1000u32, "stake"),
             },

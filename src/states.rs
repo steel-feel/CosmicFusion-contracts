@@ -1,7 +1,7 @@
 // use serde::{Deserialize, Serialize};
 // use cosmwasm_schema::cw_serde;
 use sylvia::cw_schema::cw_serde;
-use sylvia::cw_std::{Addr, Coin, Uint256};
+use sylvia::cw_std::{Addr, Coin, Uint256, Uint64};
 
 #[cw_serde(crate = "sylvia")]
 pub struct Immutables {
@@ -13,12 +13,13 @@ pub struct Immutables {
     pub timelocks: Timelocks,
 }
 
+//Values in seconds 
 #[cw_serde(crate = "sylvia")]
 pub struct Timelocks {
-    pub withdrawal : Uint256,
-    pub public_withdrawal : Uint256,
-    pub dest_cancellation : Uint256,
-    pub src_cancellation:Uint256,
+    pub withdrawal : u64,
+    pub public_withdrawal : u64,
+    pub dest_cancellation : u64,
+    pub src_cancellation:u64,
 }
 
 #[cw_serde(crate = "sylvia")]
