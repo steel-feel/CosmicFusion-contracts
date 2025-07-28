@@ -1,3 +1,3 @@
 pub mod contract;
-#[cfg(test)]
-mod multitest;
+pub mod states;
+pub mod error;
