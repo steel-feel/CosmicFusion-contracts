@@ -4,7 +4,7 @@ use cw_storage_plus::Item;
 use sha3::{Digest, Keccak256};
 use sylvia::contract;
 //QueryCtx
-use sylvia::ctx::{ExecCtx, InstantiateCtx, };
+use sylvia::ctx::{ExecCtx, InstantiateCtx};
 use sylvia::cw_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use sylvia::cw_std::Empty;
@@ -123,7 +123,7 @@ mod tests {
     use sha3::{Digest, Keccak256};
     use sylvia::cw_multi_test::IntoAddr;
     use sylvia::cw_std::testing::{message_info, mock_dependencies, mock_env};
-    use sylvia::cw_std::{Addr, Coin, Empty,Timestamp, Uint256};
+    use sylvia::cw_std::{Addr, Coin, Empty, Timestamp, Uint256};
 
     // Unit tests don't have to use a testing framework for simple things.
     //
@@ -224,19 +224,20 @@ mod tests {
         };
         contract.instantiate(ctx, insta_data).unwrap();
 
-
         let mut mock_env2 = mock_env();
         mock_env2.block.time = Timestamp::from_seconds(1500);
 
         let taker = Addr::unchecked("taker");
-        let exe_ctx = ExecCtx::from((
-            deps.as_mut(),
-            mock_env2,
-            message_info(&taker, &[]),
-        ));
+        let exe_ctx = ExecCtx::from((deps.as_mut(), mock_env2, message_info(&taker, &[])));
 
-        contract.withdraw(exe_ctx, WithdrawMsg { secret: String::from("secret") } ).unwrap();
-        
+        contract
+            .withdraw(
+                exe_ctx,
+                WithdrawMsg {
+                    secret: String::from("secret"),
+                },
+            )
+            .unwrap();
     }
 
     #[test]
@@ -283,23 +284,22 @@ mod tests {
         };
         contract.instantiate(ctx, insta_data).unwrap();
 
-
         let mut mock_env2 = mock_env();
         mock_env2.block.time = Timestamp::from_seconds(1500);
 
         let taker = Addr::unchecked("taker");
-        let exe_ctx = ExecCtx::from((
-            deps.as_mut(),
-            mock_env2,
-            message_info(&taker, &[]),
-        ));
+        let exe_ctx = ExecCtx::from((deps.as_mut(), mock_env2, message_info(&taker, &[])));
 
-      let err =  contract.withdraw(exe_ctx, WithdrawMsg { secret: String::from("wrong") } ).unwrap_err();
-      assert_eq!(err, ContractError::InvalidSecret);
-   
+        let err = contract
+            .withdraw(
+                exe_ctx,
+                WithdrawMsg {
+                    secret: String::from("wrong"),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(err, ContractError::InvalidSecret);
     }
-
-
 
     // #[test]
     // fn query() {

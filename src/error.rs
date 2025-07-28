@@ -13,7 +13,7 @@ pub enum ContractError {
     OnlyTaker,
 
     #[error("Invalid Secret")]
-    InvalidSecret, 
+    InvalidSecret,
 
     #[error("Destinational withdraw time has not passed")]
     DestWithrawTimeLimit,
