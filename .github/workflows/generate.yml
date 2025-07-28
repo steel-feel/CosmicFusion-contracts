@@ -6,7 +6,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      PROJECT_NAME: escrow_dest
+      PROJECT_NAME: project-foo
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
