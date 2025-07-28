@@ -1,7 +1,7 @@
 // use serde::{Deserialize, Serialize};
 // use cosmwasm_schema::cw_serde;
 use sylvia::cw_schema::cw_serde;
-use sylvia::cw_std::{Addr, Coin, Uint256, Uint64};
+use sylvia::cw_std::{Addr, Coin};
 
 #[cw_serde(crate = "sylvia")]
 pub struct Immutables {

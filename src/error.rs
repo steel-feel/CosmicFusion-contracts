@@ -1,8 +1,6 @@
 use sylvia::cw_std::StdError;
 use thiserror::Error;
 
-use crate::error;
-
 #[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
     #[error("{0}")]
