@@ -3,20 +3,19 @@ use crate::states::{Immutables, Timelocks};
 use cw_storage_plus::Item;
 use sylvia::contract;
 
+use crate::utils::{only_after, only_before, only_valid_secret};
 use sylvia::ctx::{ExecCtx, InstantiateCtx, QueryCtx};
 use sylvia::cw_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use sylvia::cw_std::Empty;
 use sylvia::cw_std::{Addr, BankMsg, Coin, Response, SubMsg, Uint256};
-use sylvia::types::{CustomMsg ,  CustomQuery};
-use crate::utils::{only_after, only_before, only_valid_secret};
+use sylvia::types::{CustomMsg, CustomQuery};
 
 pub struct EscrowDest<E, Q> {
     pub rescue_delay: Item<Uint256>,
     pub immutables: Item<Immutables>,
     _phantom: std::marker::PhantomData<(E, Q)>,
 }
-
 
 #[cw_serde(crate = "sylvia::cw_schema")]
 pub struct InstantiateMsgData {
@@ -38,14 +37,13 @@ pub struct WithdrawMsg {
 pub struct SvCustomMsg;
 impl sylvia::cw_std::CustomMsg for SvCustomMsg {}
 
-
 #[cfg_attr(not(feature = "library"), sylvia::entry_points(generics<Empty, Empty>))]
 #[contract]
 #[sv::error(ContractError)]
 #[sv::custom(msg = E, query = Q)]
 impl<E, Q> EscrowDest<E, Q>
 where
-    E: CustomMsg + 'static ,
+    E: CustomMsg + 'static,
     Q: CustomQuery + 'static,
 {
     //TODO: check if can pass anything in args
@@ -112,7 +110,7 @@ where
         if only_before(current_time_in_secs, immutables.timelocks.dest_cancellation) {
             return Err(ContractError::DestCancelTimeLimit);
         }
-        //TODO: Check secret hash, same name as solidity
+        //Check secret hash
         only_valid_secret(msg.secret, immutables.hashlock)?;
 
         //send coins
@@ -120,19 +118,42 @@ where
             to_address: immutables.maker.into(),
             amount: vec![immutables.token],
         };
-        let submsg =  SubMsg::reply_never(msg);
+        let submsg = SubMsg::reply_never(msg);
 
         Ok(Response::new().add_submessage(submsg))
     }
 
-    // #[sv::msg(exec)]
-    // fn public_withdraw(&self, ctx: ExecCtx<Q>, msg: WithdrawMsg)  -> Result<Response<E>, ContractError> { 
-    //     let immutables = self.immutables.load(ctx.deps.storage)?;
+    #[sv::msg(exec)]
+    fn public_withdraw(
+        &self,
+        ctx: ExecCtx<Q>,
+        msg: WithdrawMsg,
+    ) -> Result<Response<E>, ContractError> {
+        let immutables = self.immutables.load(ctx.deps.storage)?;
+        // Check timelock conditions
+        let current_time_in_secs = ctx.env.block.time.seconds();
 
+        if only_after(current_time_in_secs, immutables.timelocks.public_withdrawal) {
+            return Err(ContractError::DestWithrawTimeLimit);
+        }
 
-    // }
+        if only_before(current_time_in_secs, immutables.timelocks.dest_cancellation) {
+            return Err(ContractError::DestCancelTimeLimit);
+        }
 
+        //Check secret hash
+        only_valid_secret(msg.secret, immutables.hashlock)?;
+        //send coins
+        let msg = BankMsg::Send {
+            to_address: immutables.maker.into(),
+            amount: vec![immutables.token],
+        };
+        let submsg = SubMsg::reply_never(msg);
 
+        Ok(Response::new().add_submessage(submsg))
+    }
+
+    
 
     // StdResult<CountResponse>
     #[sv::msg(query)]
@@ -145,15 +166,17 @@ where
     #[sv::msg(query)]
     fn get_timelocks(&self, ctx: QueryCtx<Q>) -> Result<TimelockResponse, ContractError> {
         let imms = self.immutables.load(ctx.deps.storage)?;
-        Ok(TimelockResponse { timelocks : imms.timelocks })
+        Ok(TimelockResponse {
+            timelocks: imms.timelocks,
+        })
     }
 
     #[sv::msg(query)]
     fn get_current_time(&self, ctx: QueryCtx<Q>) -> Result<CurrentTimeResponse, ContractError> {
-        Ok(CurrentTimeResponse { time : ctx.env.block.time.seconds() })
+        Ok(CurrentTimeResponse {
+            time: ctx.env.block.time.seconds(),
+        })
     }
-
-
 }
 
 #[cw_serde(crate = "sylvia")]
@@ -258,7 +281,7 @@ mod tests {
             hex::encode(&hasher.finalize()) //.to_ascii_lowercase()
         };
 
-        println!("orderhash: {} \nhashlock: {}",order_hash, hashlock );
+        println!("orderhash: {} \nhashlock: {}", order_hash, hashlock);
 
         let insta_data = InstantiateMsgData {
             rescue_delay: Uint256::from(1u32),
@@ -381,7 +404,7 @@ mod tests {
             timelocks: Timelocks {
                 withdrawal: 1000,
                 public_withdrawal: 2000,
-                dest_cancellation: 1753880620 ,
+                dest_cancellation: 1753880620,
                 src_cancellation: 3000,
             },
             token: Coin::new(1000u32, "stake"),
@@ -389,12 +412,10 @@ mod tests {
         contract.instantiate(ctx, insta_data).unwrap();
         let query_ctx = QueryCtx::from((deps.as_ref(), mock_env()));
         let res = contract.get_timelocks(query_ctx).unwrap();
-        
+
         println!("timeloks {}", res.timelocks.dest_cancellation);
         assert_eq!(1753880620, res.timelocks.dest_cancellation);
     }
-
-
 
     // #[test]
     // fn inc() {
