@@ -177,21 +177,6 @@ where
         Ok(Response::new().add_submessage(submsg))
     }
 
-
-
-    /*
-    
-        function rescueFunds(address token, uint256 amount, Immutables calldata immutables)
-        external
-        onlyTaker(immutables)
-        onlyValidImmutables(immutables)
-        onlyAfter(immutables.timelocks.rescueStart(RESCUE_DELAY))
-    {
-        _uniTransfer(token, msg.sender, amount);
-        emit FundsRescued(token, amount);
-    }
-     */
-
      #[sv::msg(exec)]
      fn rescue_funds(&self, ctx: ExecCtx<Q> ) -> Result<Response<E>, ContractError> { 
         let immutables = self.immutables.load(ctx.deps.storage)?;
@@ -482,19 +467,173 @@ mod tests {
         assert_eq!(1753880620, res.timelocks.dest_cancellation);
     }
 
-    // #[test]
-    // fn inc() {
-    //     let sender = "alice".into_addr();
-    //     let contract = CounterContract::<Empty, Empty>::new();
-    //     let mut deps = mock_dependencies();
-    //     let ctx = InstantiateCtx::from((deps.as_mut(), mock_env(), message_info(&sender, &[])));
-    //     contract.instantiate(ctx).unwrap();
+    #[test]
+    fn should_public_withdraw() {
+        let sender = "alice".into_addr();
+        let contract = EscrowDest::<Empty, Empty>::new();
+        let mut deps = mock_dependencies();
+        let ctx = InstantiateCtx::from((
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[Coin::new(1000u32, "stake")]),
+        ));
 
-    //     let ctx = ExecCtx::from((deps.as_mut(), mock_env(), message_info(&sender, &[])));
-    //     contract.increment(ctx).unwrap();
+        let hashlock = {
+            let mut hasher = Keccak256::new();
+            hasher.update(b"secret");
+            hex::encode(&hasher.finalize())
+        };
 
-    //     let ctx = QueryCtx::from((deps.as_ref(), mock_env()));
-    //     let res = contract.count(ctx).unwrap();
-    //     assert_eq!(1, res.count);
-    // }
+        let order_hash = {
+            let mut hasher = Keccak256::new();
+            hasher.update(b"orderhash");
+            hex::encode(&hasher.finalize()) //.to_ascii_lowercase()
+        };
+
+        let insta_data = InstantiateMsgData {
+            rescue_delay: 1,
+            hashlock,
+            order_hash,
+            maker: Addr::unchecked("maker"),
+            taker: Addr::unchecked("taker"),
+            timelocks: Timelocks {
+                withdrawal: 1000,
+                public_withdrawal: 2000,
+                dest_cancellation: 3000,
+                src_cancellation: 3000,
+                src_withdrawal: 5000,
+            },
+            token: Coin::new(1000u32, "stake"),
+        };
+
+        contract.instantiate(ctx, insta_data).unwrap();
+
+        let mut mock_env2 = mock_env();
+        mock_env2.block.time = Timestamp::from_seconds(2500);
+
+        let taker = Addr::unchecked("bob");
+        let exe_ctx = ExecCtx::from((deps.as_mut(), mock_env2, message_info(&taker, &[])));
+
+        contract.public_withdraw(
+                exe_ctx,
+                WithdrawMsg {
+                    secret: String::from("secret"),
+                },
+            )
+            .unwrap();
+
+    }
+
+    #[test]
+    fn should_cancel() {
+        let sender = "alice".into_addr();
+        let contract = EscrowDest::<Empty, Empty>::new();
+        let mut deps = mock_dependencies();
+        let ctx = InstantiateCtx::from((
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[Coin::new(1000u32, "stake")]),
+        ));
+
+        let hashlock = {
+            let mut hasher = Keccak256::new();
+            hasher.update(b"secret");
+            hex::encode(&hasher.finalize())
+        };
+
+        let order_hash = {
+            let mut hasher = Keccak256::new();
+            hasher.update(b"orderhash");
+            hex::encode(&hasher.finalize()) //.to_ascii_lowercase()
+        };
+
+        let insta_data = InstantiateMsgData {
+            rescue_delay: 1,
+            hashlock,
+            order_hash,
+            maker: Addr::unchecked("maker"),
+            taker: Addr::unchecked("taker"),
+            timelocks: Timelocks {
+                withdrawal: 1000,
+                public_withdrawal: 2000,
+                dest_cancellation: 3000,
+                src_cancellation: 3000,
+                src_withdrawal: 5000,
+            },
+            token: Coin::new(1000u32, "stake"),
+        };
+
+        contract.instantiate(ctx, insta_data).unwrap();
+
+        let mut mock_env2 = mock_env();
+        mock_env2.block.time = Timestamp::from_seconds(3500);
+
+        let taker = Addr::unchecked("taker");
+        let exe_ctx = ExecCtx::from((deps.as_mut(), mock_env2, message_info(&taker, &[])));
+
+        contract.cancel(
+                exe_ctx,
+            )
+            .unwrap();
+
+
+
+    }
+
+    #[test]
+    fn should_rescue_funds() {
+        let sender = "alice".into_addr();
+        let contract = EscrowDest::<Empty, Empty>::new();
+        let mut deps = mock_dependencies();
+        let ctx = InstantiateCtx::from((
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[Coin::new(1000u32, "stake")]),
+        ));
+
+        let hashlock = {
+            let mut hasher = Keccak256::new();
+            hasher.update(b"secret");
+            hex::encode(&hasher.finalize())
+        };
+
+        let order_hash = {
+            let mut hasher = Keccak256::new();
+            hasher.update(b"orderhash");
+            hex::encode(&hasher.finalize()) //.to_ascii_lowercase()
+        };
+
+        let insta_data = InstantiateMsgData {
+            rescue_delay: 1,
+            hashlock,
+            order_hash,
+            maker: Addr::unchecked("maker"),
+            taker: Addr::unchecked("taker"),
+            timelocks: Timelocks {
+                withdrawal: 1000,
+                public_withdrawal: 2000,
+                dest_cancellation: 3000,
+                src_cancellation: 3000,
+                src_withdrawal: 5000,
+            },
+            token: Coin::new(1000u32, "stake"),
+        };
+
+        contract.instantiate(ctx, insta_data).unwrap();
+
+        let mut mock_env2 = mock_env();
+        mock_env2.block.time = Timestamp::from_seconds(5010);
+
+        let taker = Addr::unchecked("taker");
+        let exe_ctx = ExecCtx::from((deps.as_mut(), mock_env2, message_info(&taker, &[])));
+
+        contract.rescue_funds(
+                exe_ctx,
+            )
+            .unwrap();
+
+
+
+    }
+
 }
