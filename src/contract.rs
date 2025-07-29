@@ -153,9 +153,43 @@ where
         Ok(Response::new().add_submessage(submsg))
     }
 
-    
 
-    // StdResult<CountResponse>
+    #[sv::msg(exec)]
+    fn cancel(&self, ctx: ExecCtx<Q> ) -> Result<Response<E>, ContractError> {
+        let immutables = self.immutables.load(ctx.deps.storage)?;
+
+        // Check if caller is taker
+        if ctx.info.sender != immutables.taker {
+            return Err(ContractError::OnlyTaker);
+        }
+
+        let current_time_in_secs = ctx.env.block.time.seconds();
+        if only_after(current_time_in_secs, immutables.timelocks.dest_cancellation) {
+            return Err(ContractError::DestCancelTimeLimit);
+        }
+
+        let msg = BankMsg::Send {
+            to_address: immutables.taker.into(),
+            amount: vec![immutables.token],
+        };
+        let submsg = SubMsg::reply_never(msg);
+
+        Ok(Response::new().add_submessage(submsg))
+    }
+
+    /*
+    
+        function rescueFunds(address token, uint256 amount, Immutables calldata immutables)
+        external
+        onlyTaker(immutables)
+        onlyValidImmutables(immutables)
+        onlyAfter(immutables.timelocks.rescueStart(RESCUE_DELAY))
+    {
+        _uniTransfer(token, msg.sender, amount);
+        emit FundsRescued(token, amount);
+    }
+     */
+    
     #[sv::msg(query)]
     fn get_order_hash(&self, ctx: QueryCtx<Q>) -> Result<OrderHashResponse, ContractError> {
         let imms = self.immutables.load(ctx.deps.storage)?;
