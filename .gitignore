@@ -1,3 +1,5 @@
 /target
 /schema
 Cargo.lock
+
+/artifacts/*

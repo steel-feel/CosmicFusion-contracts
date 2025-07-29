@@ -1,14 +1,14 @@
 use crate::error::ContractError;
-use crate::states::Immutables;
+use crate::states::{Immutables, Timelocks};
 use cw_storage_plus::Item;
 use sha3::{Digest, Keccak256};
 use sylvia::contract;
-//QueryCtx
-use sylvia::ctx::{ExecCtx, InstantiateCtx};
+
+use sylvia::ctx::{ExecCtx, InstantiateCtx, QueryCtx};
 use sylvia::cw_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use sylvia::cw_std::Empty;
-use sylvia::cw_std::{Response, Uint256};
+use sylvia::cw_std::{Addr, BankMsg, Coin, Response, SubMsg, Uint256};
 use sylvia::types::{CustomMsg, CustomQuery};
 
 pub struct EscrowDest<E, Q> {
@@ -20,7 +20,12 @@ pub struct EscrowDest<E, Q> {
 #[cw_serde(crate = "sylvia::cw_schema")]
 pub struct InstantiateMsgData {
     pub rescue_delay: Uint256,
-    pub dst_immutables: Immutables,
+    pub order_hash: String,
+    pub hashlock: String,
+    pub maker: Addr,
+    pub taker: Addr,
+    pub token: Coin,
+    pub timelocks: Timelocks,
 }
 
 #[cw_serde(crate = "sylvia::cw_schema")]
@@ -54,9 +59,7 @@ where
     ) -> Result<Response<E>, ContractError> {
         let mut ok = false;
         for asset in ctx.info.funds {
-            if asset.denom == data.dst_immutables.token.denom
-                && asset.amount == data.dst_immutables.token.amount
-            {
+            if asset.denom == data.token.denom && asset.amount == data.token.amount {
                 ok = true;
             }
         }
@@ -64,10 +67,25 @@ where
             return Err(ContractError::UnmatchedDenomOrAmount);
         }
 
+        let hashlock = hex::decode(&data.hashlock)
+            .map_err(|e| sylvia::cw_std::StdError::generic_err(e.to_string()))?;
+
+        let order_hash = hex::decode(&data.order_hash)
+            .map_err(|e| sylvia::cw_std::StdError::generic_err(e.to_string()))?;
+
         self.rescue_delay
             .save(ctx.deps.storage, &data.rescue_delay)?;
-        self.immutables
-            .save(ctx.deps.storage, &data.dst_immutables)?;
+        self.immutables.save(
+            ctx.deps.storage,
+            &Immutables {
+                hashlock,
+                order_hash,
+                maker: data.maker,
+                taker: data.taker,
+                timelocks: data.timelocks,
+                token: data.token,
+            },
+        )?;
         Ok(Response::new())
     }
 
@@ -95,23 +113,32 @@ where
         hasher.update(msg.secret.as_bytes());
         let computed_hash = hasher.finalize();
 
-        if computed_hash.to_ascii_lowercase() != immutables.hashlock {
+        if computed_hash.to_vec() != immutables.hashlock {
             return Err(ContractError::InvalidSecret);
         }
 
-        Ok(Response::new())
+        //send coins
+        let msg = BankMsg::Send {
+            to_address: immutables.maker.into(),
+            amount: vec![immutables.token],
+        };
+        let submsg = SubMsg::reply_on_success(msg, ctx.env.block.time.seconds());
+
+        Ok(Response::new().add_submessage(submsg))
     }
 
-    // #[sv::msg(query)]
-    // fn count(&self, ctx: QueryCtx<Q>) -> StdResult<CountResponse> {
-    //     let count = self.count.load(ctx.deps.storage)?;
-    //     Ok(CountResponse { count })
-    // }
+    // StdResult<CountResponse>
+    #[sv::msg(query)]
+    fn get_order_hash(&self, ctx: QueryCtx<Q>) -> Result<OrderHashResponse, ContractError> {
+        let imms = self.immutables.load(ctx.deps.storage)?;
+        let order_hash = hex::encode(imms.order_hash);
+        Ok(OrderHashResponse { order_hash })
+    }
 }
 
 #[cw_serde(crate = "sylvia")]
-pub struct CountResponse {
-    pub count: u64,
+pub struct OrderHashResponse {
+    pub order_hash: String,
 }
 
 #[cfg(test)]
@@ -140,35 +167,32 @@ mod tests {
             mock_env(),
             message_info(&sender, &[Coin::new(1000u32, "stake")]),
         ));
-        let mut hasher = Keccak256::new();
-        hasher.update(b"secret");
+
         let hashlock = {
             let mut hasher = Keccak256::new();
             hasher.update(b"secret");
-            hasher.finalize().to_ascii_lowercase()
+            hex::encode(&hasher.finalize())
         };
 
         let order_hash = {
             let mut hasher = Keccak256::new();
             hasher.update(b"orderhash");
-            hasher.finalize().to_ascii_lowercase()
+            hex::encode(&hasher.finalize()) //.to_ascii_lowercase()
         };
 
         let insta_data = InstantiateMsgData {
             rescue_delay: Uint256::from(1u32),
-            dst_immutables: Immutables {
-                hashlock,
-                order_hash,
-                maker: Addr::unchecked("maker"),
-                taker: Addr::unchecked("taker"),
-                timelocks: Timelocks {
-                    withdrawal: 1,
-                    public_withdrawal: 2,
-                    dest_cancellation: 3,
-                    src_cancellation: 4,
-                },
-                token: Coin::new(1000u32, "stake"),
+            hashlock,
+            order_hash,
+            maker: Addr::unchecked("maker"),
+            taker: Addr::unchecked("taker"),
+            timelocks: Timelocks {
+                withdrawal: 1,
+                public_withdrawal: 2,
+                dest_cancellation: 3,
+                src_cancellation: 4,
             },
+            token: Coin::new(1000u32, "stake"),
         };
         contract.instantiate(ctx, insta_data).unwrap();
 
@@ -192,35 +216,33 @@ mod tests {
             mock_env(),
             message_info(&sender, &[Coin::new(1000u32, "stake")]),
         ));
-        let mut hasher = Keccak256::new();
-        hasher.update(b"secret");
         let hashlock = {
             let mut hasher = Keccak256::new();
             hasher.update(b"secret");
-            hasher.finalize().to_ascii_lowercase()
+            hex::encode(&hasher.finalize())
         };
 
         let order_hash = {
             let mut hasher = Keccak256::new();
             hasher.update(b"orderhash");
-            hasher.finalize().to_ascii_lowercase()
+            hex::encode(&hasher.finalize()) //.to_ascii_lowercase()
         };
+
+        println!("orderhash: {} \nhashlock: {}",order_hash, hashlock );
 
         let insta_data = InstantiateMsgData {
             rescue_delay: Uint256::from(1u32),
-            dst_immutables: Immutables {
-                hashlock,
-                order_hash,
-                maker: Addr::unchecked("maker"),
-                taker: Addr::unchecked("taker"),
-                timelocks: Timelocks {
-                    withdrawal: 1000,
-                    public_withdrawal: 2000,
-                    dest_cancellation: 3000,
-                    src_cancellation: 4000,
-                },
-                token: Coin::new(1000u32, "stake"),
+            hashlock,
+            order_hash,
+            maker: Addr::unchecked("maker"),
+            taker: Addr::unchecked("taker"),
+            timelocks: Timelocks {
+                withdrawal: 1000,
+                public_withdrawal: 2000,
+                dest_cancellation: 3000,
+                src_cancellation: 4000,
             },
+            token: Coin::new(1000u32, "stake"),
         };
         contract.instantiate(ctx, insta_data).unwrap();
 
@@ -252,35 +274,31 @@ mod tests {
             mock_env(),
             message_info(&sender, &[Coin::new(1000u32, "stake")]),
         ));
-        let mut hasher = Keccak256::new();
-        hasher.update(b"secret");
         let hashlock = {
             let mut hasher = Keccak256::new();
             hasher.update(b"secret");
-            hasher.finalize().to_ascii_lowercase()
+            hex::encode(&hasher.finalize())
         };
 
         let order_hash = {
             let mut hasher = Keccak256::new();
             hasher.update(b"orderhash");
-            hasher.finalize().to_ascii_lowercase()
+            hex::encode(&hasher.finalize()) //.to_ascii_lowercase()
         };
 
         let insta_data = InstantiateMsgData {
             rescue_delay: Uint256::from(1u32),
-            dst_immutables: Immutables {
-                hashlock,
-                order_hash,
-                maker: Addr::unchecked("maker"),
-                taker: Addr::unchecked("taker"),
-                timelocks: Timelocks {
-                    withdrawal: 1000,
-                    public_withdrawal: 2000,
-                    dest_cancellation: 3000,
-                    src_cancellation: 4000,
-                },
-                token: Coin::new(1000u32, "stake"),
+            hashlock,
+            order_hash,
+            maker: Addr::unchecked("maker"),
+            taker: Addr::unchecked("taker"),
+            timelocks: Timelocks {
+                withdrawal: 1000,
+                public_withdrawal: 2000,
+                dest_cancellation: 3000,
+                src_cancellation: 4000,
             },
+            token: Coin::new(1000u32, "stake"),
         };
         contract.instantiate(ctx, insta_data).unwrap();
 
