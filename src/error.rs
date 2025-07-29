@@ -20,4 +20,7 @@ pub enum ContractError {
 
     #[error("Destinational cancellation time has passed")]
     DestCancelTimeLimit,
+
+    #[error("Rescue time has passed")]
+    RescueTimeLimit
 }

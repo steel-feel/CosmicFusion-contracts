@@ -8,18 +8,18 @@ use sylvia::ctx::{ExecCtx, InstantiateCtx, QueryCtx};
 use sylvia::cw_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use sylvia::cw_std::Empty;
-use sylvia::cw_std::{Addr, BankMsg, Coin, Response, SubMsg, Uint256};
+use sylvia::cw_std::{Addr, BankMsg, Coin, Response, SubMsg};
 use sylvia::types::{CustomMsg, CustomQuery};
 
 pub struct EscrowDest<E, Q> {
-    pub rescue_delay: Item<Uint256>,
+    pub rescue_delay: Item<u64>,
     pub immutables: Item<Immutables>,
     _phantom: std::marker::PhantomData<(E, Q)>,
 }
 
 #[cw_serde(crate = "sylvia::cw_schema")]
 pub struct InstantiateMsgData {
-    pub rescue_delay: Uint256,
+    pub rescue_delay: u64,
     pub order_hash: String,
     pub hashlock: String,
     pub maker: Addr,
@@ -177,6 +177,8 @@ where
         Ok(Response::new().add_submessage(submsg))
     }
 
+
+
     /*
     
         function rescueFunds(address token, uint256 amount, Immutables calldata immutables)
@@ -189,6 +191,32 @@ where
         emit FundsRescued(token, amount);
     }
      */
+
+     #[sv::msg(exec)]
+     fn rescue_funds(&self, ctx: ExecCtx<Q> ) -> Result<Response<E>, ContractError> { 
+        let immutables = self.immutables.load(ctx.deps.storage)?;
+        let rescue_delay = self.rescue_delay.load(ctx.deps.storage)?;
+        // Check if caller is taker
+        if ctx.info.sender != immutables.taker {
+            return Err(ContractError::OnlyTaker);
+        }
+
+        let current_time_in_secs = ctx.env.block.time.seconds();
+        let rescue_start = immutables.timelocks.src_withdrawal + rescue_delay;
+        if only_after(current_time_in_secs, rescue_start) {
+            return Err(ContractError::RescueTimeLimit);
+        }
+
+        let msg = BankMsg::Send {
+            to_address: immutables.taker.into(),
+            amount: vec![immutables.token],
+        };
+        let submsg = SubMsg::reply_never(msg);
+
+        Ok(Response::new().add_submessage(submsg))
+     }
+
+
     
     #[sv::msg(query)]
     fn get_order_hash(&self, ctx: QueryCtx<Q>) -> Result<OrderHashResponse, ContractError> {
@@ -237,7 +265,7 @@ mod tests {
     use sha3::{Digest, Keccak256};
     use sylvia::cw_multi_test::IntoAddr;
     use sylvia::cw_std::testing::{message_info, mock_dependencies, mock_env};
-    use sylvia::cw_std::{Addr, Coin, Empty, Timestamp, Uint256};
+    use sylvia::cw_std::{Addr, Coin, Empty, Timestamp};
 
     // Unit tests don't have to use a testing framework for simple things.
     //
@@ -268,7 +296,7 @@ mod tests {
         };
 
         let insta_data = InstantiateMsgData {
-            rescue_delay: Uint256::from(1u32),
+            rescue_delay: 1,
             hashlock,
             order_hash,
             maker: Addr::unchecked("maker"),
@@ -278,6 +306,7 @@ mod tests {
                 public_withdrawal: 2,
                 dest_cancellation: 3,
                 src_cancellation: 4,
+                src_withdrawal: 5,
             },
             token: Coin::new(1000u32, "stake"),
         };
@@ -288,8 +317,7 @@ mod tests {
         // but observe the external results.
         // assert_eq!(0, contract..load(deps.as_ref().storage).unwrap());
         assert_eq!(
-            Uint256::one(),
-            contract.rescue_delay.load(deps.as_ref().storage).unwrap()
+           1, contract.rescue_delay.load(deps.as_ref().storage).unwrap()
         );
     }
 
@@ -318,7 +346,7 @@ mod tests {
         println!("orderhash: {} \nhashlock: {}", order_hash, hashlock);
 
         let insta_data = InstantiateMsgData {
-            rescue_delay: Uint256::from(1u32),
+            rescue_delay: 1,
             hashlock,
             order_hash,
             maker: Addr::unchecked("maker"),
@@ -328,6 +356,7 @@ mod tests {
                 public_withdrawal: 2000,
                 dest_cancellation: 3000,
                 src_cancellation: 4000,
+                src_withdrawal: 5000,
             },
             token: Coin::new(1000u32, "stake"),
         };
@@ -374,7 +403,7 @@ mod tests {
         };
 
         let insta_data = InstantiateMsgData {
-            rescue_delay: Uint256::from(1u32),
+            rescue_delay: 1,
             hashlock,
             order_hash,
             maker: Addr::unchecked("maker"),
@@ -384,6 +413,7 @@ mod tests {
                 public_withdrawal: 2000,
                 dest_cancellation: 3000,
                 src_cancellation: 4000,
+                src_withdrawal: 5000,
             },
             token: Coin::new(1000u32, "stake"),
         };
@@ -430,7 +460,7 @@ mod tests {
         };
 
         let insta_data = InstantiateMsgData {
-            rescue_delay: Uint256::from(1u32),
+            rescue_delay: 1,
             hashlock,
             order_hash,
             maker: Addr::unchecked("maker"),
@@ -440,6 +470,7 @@ mod tests {
                 public_withdrawal: 2000,
                 dest_cancellation: 1753880620,
                 src_cancellation: 3000,
+                src_withdrawal: 5000,
             },
             token: Coin::new(1000u32, "stake"),
         };

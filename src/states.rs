@@ -20,6 +20,7 @@ pub struct Timelocks {
     pub public_withdrawal: u64,
     pub dest_cancellation: u64,
     pub src_cancellation: u64,
+    pub src_withdrawal:u64,
 }
 
 #[cw_serde(crate = "sylvia")]
