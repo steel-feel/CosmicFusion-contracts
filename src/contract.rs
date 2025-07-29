@@ -141,17 +141,6 @@ where
         Ok(OrderHashResponse { order_hash })
     }
 
-    // #[sv::msg(reply, reply_on=always)]
-    // fn update_or_revert_state(
-    //     &self,
-    //     ctx: ReplyCtx,
-    //     result: SubMsgResult,
-    //     #[sv::payload(raw)] payload: u64,
-    // ) -> StdResult<Response> {
-    //     Ok(Response::new())
-    // }
-    
-
     #[sv::msg(query)]
     fn get_timelocks(&self, ctx: QueryCtx<Q>) -> Result<TimelockResponse, ContractError> {
         let imms = self.immutables.load(ctx.deps.storage)?;
