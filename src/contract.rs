@@ -1,7 +1,6 @@
 use crate::error::ContractError;
 use crate::states::{Immutables, Timelocks};
 use cw_storage_plus::Item;
-use sha3::{Digest, Keccak256};
 use sylvia::contract;
 
 use sylvia::ctx::{ExecCtx, InstantiateCtx, QueryCtx};
@@ -10,6 +9,7 @@ use sylvia::cw_schema::cw_serde;
 use sylvia::cw_std::Empty;
 use sylvia::cw_std::{Addr, BankMsg, Coin, Response, SubMsg, Uint256};
 use sylvia::types::{CustomMsg ,  CustomQuery};
+use crate::utils::{only_after, only_before, only_valid_secret};
 
 pub struct EscrowDest<E, Q> {
     pub rescue_delay: Item<Uint256>,
@@ -104,24 +104,16 @@ where
         if ctx.info.sender != immutables.taker {
             return Err(ContractError::OnlyTaker);
         }
-
         // Check timelock conditions
-        // onlyAfter(immutables.timelocks.get(TimelocksLib.Stage.DstWithdrawal))
-        if immutables.timelocks.withdrawal > ctx.env.block.time.seconds() {
+        let current_time_in_secs = ctx.env.block.time.seconds();
+        if only_after(current_time_in_secs, immutables.timelocks.withdrawal) {
             return Err(ContractError::DestWithrawTimeLimit);
         }
-        // onlyBefore(immutables.timelocks.get(TimelocksLib.Stage.DstCancellation))
-        if immutables.timelocks.dest_cancellation < ctx.env.block.time.seconds() {
+        if only_before(current_time_in_secs, immutables.timelocks.dest_cancellation) {
             return Err(ContractError::DestCancelTimeLimit);
         }
-        // Check secret hash
-        let mut hasher = Keccak256::new();
-        hasher.update(msg.secret.as_bytes());
-        let computed_hash = hasher.finalize();
-
-        if computed_hash.to_vec() != immutables.hashlock {
-            return Err(ContractError::InvalidSecret);
-        }
+        //TODO: Check secret hash, same name as solidity
+        only_valid_secret(msg.secret, immutables.hashlock)?;
 
         //send coins
         let msg = BankMsg::Send {
@@ -132,6 +124,15 @@ where
 
         Ok(Response::new().add_submessage(submsg))
     }
+
+    // #[sv::msg(exec)]
+    // fn public_withdraw(&self, ctx: ExecCtx<Q>, msg: WithdrawMsg)  -> Result<Response<E>, ContractError> { 
+    //     let immutables = self.immutables.load(ctx.deps.storage)?;
+
+
+    // }
+
+
 
     // StdResult<CountResponse>
     #[sv::msg(query)]
@@ -151,6 +152,8 @@ where
     fn get_current_time(&self, ctx: QueryCtx<Q>) -> Result<CurrentTimeResponse, ContractError> {
         Ok(CurrentTimeResponse { time : ctx.env.block.time.seconds() })
     }
+
+
 }
 
 #[cw_serde(crate = "sylvia")]
